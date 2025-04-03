@@ -1,0 +1,81 @@
+# ignore all files in the uploads folder
+uploads/*
+
+# ignore all files in the logs folder
+logs/*
+
+# Ignore Python virtual environments
+venv/
+env/
+
+# Ignore dependency folders (if using Poetry)
+.poetry/
+
+# Ignore Python cache files
+
+=======
+# Ignore Python virtual environment
+venv/
+.venv/
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore environment variables
+.env
+
+*.env
+
+# Ignore IDE/editor config files
+.vscode/
+.idea/
+*.iml
+
+# Ignore log files
+logs/
+*.log
+
+# Ignore database files
+*.sqlite3
+*.db
+
+# Ignore compiled files
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.qodo
+
+# Ignore Docker and container-related files (if using)
+docker-compose.override.yml
+
+# Ignore coverage reports
+htmlcov/
+.coverage
+*.cover
+*.py,cover
+
+# Ignore Jupyter Notebook checkpoints (if using)
+.ipynb_checkpoints/
+
+# Ignore node_modules (if using frontend in FastAPI project)
+node_modules/
+
+
+
+>>>>>>> feature/fetch_tables_using_filters
+# Ignore log files
+*.log
+logs/
+
+# Ignore OS and IDE files
+.DS_Store
+<<<<<<< HEAD
+.vscode/
+
+.cursorrules

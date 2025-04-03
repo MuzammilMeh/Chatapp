@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Test</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        #messages { 
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+            position: relative;
+        }
+        .sent {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .received {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        .message-status {
+            font-size: 0.8em;
+            color: #666;
+            position: absolute;
+            bottom: 2px;
+            right: 5px;
+            display: flex;
+            align-items: center;
+        }
+        .status-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 4px;
+            border-radius: 50%;
+        }
+        .status-sent { background-color: #888888; }
+        .status-delivered { background-color: #4a90e2; }
+        .status-read { background-color: #28a745; }
+        .groups-panel {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        .chat-type-selector {
+            margin-bottom: 10px;
+        }
+        .notification-center {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            z-index: 1000;
+        }
+        .notification {
+            background-color: #fff3cd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ffeeba;
+            animation: slideIn 0.3s ease-out;
+        }
+        .notification.group {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .notification.message {
+            background-color: #cce5ff;
+            border-color: #b8daff;
+        }
+        .connection-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+        .connection-status.connected {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .connection-status.disconnected {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .group-members {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .member {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .member-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .member-online { background-color: #28a745; }
+        .member-offline { background-color: #dc3545; }
+        .load-more {
+            text-align: center;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .media-upload {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .media-preview {
+            max-width: 200px;
+            max-height: 200px;
+            margin: 10px 0;
+        }
+
+        .message img {
+            max-width: 250px;
+            max-height: 250px;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+
+        .message video {
+            max-width: 250px;
+            max-height: 250px;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+
+        .file-link {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            text-decoration: none;
+            color: #333;
+            margin: 5px 0;
+        }
+
+        .emoji-picker {
+            margin: 10px 0;
+        }
+
+        .voice-recorder {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        #recordButton {
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            background: #f0f0f0;
+            transition: all 0.3s;
+        }
+
+        #recordButton:hover {
+            background: #e0e0e0;
+        }
+
+        .voice-message {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .voice-info {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        #recordingStatus {
+            color: red;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="notification-center" id="notificationCenter"></div>
+    <div class="connection-status" id="connectionStatus">Not connected</div>
+
+    <div class="chat-container">
+        <div class="user-section">
+            <label>Your User ID:</label>
+            <input type="text" id="userId" placeholder="Enter your user ID">
+            <button onclick="connect()">Connect</button>
+        </div>
+
+        <div class="chat-type-selector">
+            <label>Chat Type:</label>
+            <select id="chatType" onchange="handleChatTypeChange()">
+                <option value="direct">Direct Message</option>
+                <option value="group">Group Chat</option>
+            </select>
+        </div>
+
+        <div id="directChatControls">
+            <label>Recipient User ID:</label>
+            <input type="text" id="recipientId" placeholder="Enter recipient's user ID">
+            <div class="recipient-status" id="recipientStatus"></div>
+        </div>
+
+        <div id="groupChatControls" style="display: none;">
+            <div class="groups-panel">
+                <h3>Groups</h3>
+                <div>
+                    <input type="text" id="newGroupName" placeholder="New group name">
+                    <input type="text" id="newGroupMembers" placeholder="Member IDs (comma-separated)">
+                    <button onclick="createGroup()">Create Group</button>
+                </div>
+                <div id="groupsList"></div>
+            </div>
+            <div>
+                <label>Selected Group:</label>
+                <select id="groupSelect" onchange="loadGroupMessages()"></select>
+                <div class="group-members" id="groupMembers"></div>
+            </div>
+        </div>
+
+        <div class="messages-container">
+            <div class="load-more" id="loadMore" onclick="loadMoreMessages()">Load More Messages</div>
+            <div id="messages"></div>
+        </div>
+
+        <div class="media-upload">
+            <input type="file" id="fileInput" accept="image/*,video/*,.pdf,.doc,.docx">
+            <div id="mediaPreview"></div>
+        </div>
+
+        <div class="message-input">
+            <div class="voice-recorder">
+                <button id="recordButton" onclick="toggleRecording()">🎤</button>
+                <span id="recordingStatus"></span>
+                <audio id="recordingPreview" controls style="display: none;"></audio>
+            </div>
+            <div class="emoji-picker">
+                <button onclick="toggleEmojiPicker()">😊</button>
+                <div id="emojiList" style="display: none;">
+                    <!-- Common emojis -->
+                    <span onclick="addEmoji('😊')">😊</span>
+                    <span onclick="addEmoji('👍')">👍</span>
+                    <span onclick="addEmoji('❤️')">❤️</span>
+                    <span onclick="addEmoji('😂')">😂</span>
+                    <span onclick="addEmoji('🎉')">🎉</span>
+                    <!-- Add more emojis as needed -->
+                </div>
+            </div>
+            <input type="text" id="messageInput" placeholder="Type your message">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            socket: null,
+            userId: '',
+            currentChatType: 'direct',
+            userGroups: [],
+            unreadCounts: { direct: 0, group: 0 },
+            messagePageSize: 50,
+            currentPage: 1,
+            activeConnections: new Set(),
+            groupMembers: new Map(),
+            messageQueue: [],
+        };
+
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        function showNotification(message, type = 'info') {
+            const notificationCenter = document.getElementById('notificationCenter');
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            notificationCenter.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
+        }
+
+        function updateConnectionStatus(status) {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.className = `connection-status ${status}`;
+            statusDiv.textContent = status === 'connected' ? 'Connected' : 'Disconnected';
+        }
+
+        function updateMessageStatus(messageId, status) {
+            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageDiv) {
+                const statusDiv = messageDiv.querySelector('.message-status');
+                if (statusDiv) {
+                    const statusIcon = statusDiv.querySelector('.status-icon');
+                    statusIcon.className = `status-icon status-${status}`;
+                    statusDiv.querySelector('.status-text').textContent = status;
+                }
+            }
+        }
+
+        function updateGroupMembers(groupId, members) {
+            const membersDiv = document.getElementById('groupMembers');
+            membersDiv.innerHTML = '';
+            
+            members.forEach(member => {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'member';
+                const status = state.activeConnections.has(member) ? 'online' : 'offline';
+                memberDiv.innerHTML = `
+                    <span class="member-status member-${status}"></span>
+                    <span>${member}</span>
+                `;
+                membersDiv.appendChild(memberDiv);
+            });
+        }
+
+        function displayMessage(message, sent) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sent ? 'sent' : 'received'}`;
+            messageDiv.dataset.messageId = message._id;
+            
+            const time = new Date(message.timestamp).toLocaleTimeString();
+            const status = getMessageStatus(message, sent);
+            
+            let contentHtml = '';
+            
+            // Handle different content types
+            if (message.content_type === 'image') {
+                contentHtml = `<img src="${message.media_url}" alt="Image" onclick="openMediaViewer(this.src)">`;
+            } else if (message.content_type === 'video') {
+                contentHtml = `<video controls src="${message.media_url}"></video>`;
+            } else if (message.content_type === 'file') {
+                contentHtml = `
+                    <div class="file-message">
+                        <a href="${message.media_url}" class="file-link" target="_blank">
+                            📎 ${message.media_metadata?.filename || 'Download File'}
+                            (${formatFileSize(message.media_metadata?.size || 0)})
+                        </a>
+                    </div>`;
+            } else if (message.content_type === 'voice') {
+                contentHtml = `
+                    <div class="voice-message">
+                        <audio controls src="${message.media_url}"></audio>
+                        <div class="voice-info">
+                            ${message.media_metadata?.duration ? 
+                                `Duration: ${message.media_metadata.duration}s` : ''}
+                        </div>
+                    </div>`;
+            } else {
+                contentHtml = `<div class="message-content">${message.content}</div>`;
+            }
+            
+            messageDiv.innerHTML = `
+                ${contentHtml}
+                <div class="message-info">
+                    <span class="message-sender">${sent ? 'You' : message.from_user_id}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-status">
+                    <span class="status-icon status-${message.status || 'sent'}"></span>
+                    <span class="status-text">${status}</span>
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            if (!sent) {
+                markMessageAsRead(message._id);
+            }
+        }
+
+        async function loadMoreMessages() {
+            state.currentPage++;
+            await loadMessages(true);
+        }
+
+        async function loadMessages(append = false) {
+            let otherId;
+            if (state.currentChatType === 'group') {
+                otherId = document.getElementById('groupSelect').value;
+            } else {
+                otherId = document.getElementById('recipientId').value;
+            }
+            
+            if (!otherId) return;
+
+            try {
+                const response = await fetch(
+                    `http://localhost:8001/messages/${state.userId}/${otherId}?message_type=${state.currentChatType}&limit=${state.messagePageSize}`
+                );
+                const messages = await response.json();
+                
+                if (!append) {
+                    clearMessages();
+                }
+                
+                messages.reverse().forEach(message => {
+                    displayMessage(message, message.from_user_id === state.userId);
+                });
+
+                document.getElementById('loadMore').style.display = 
+                    messages.length === state.messagePageSize ? 'block' : 'none';
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                showNotification('Error loading messages: ' + error.message, 'error');
+            }
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        function getMessageStatus(message, sent) {
+            if (sent) {
+                return message.status || 'sent';
+            } else {
+                if (message.type === 'group') {
+                    const readCount = message.read_by ? message.read_by.length : 0;
+                    return `Read by ${readCount}`;
+                }
+                return '';
+            }
+        }
+
+        function connect() {
+            state.userId = document.getElementById('userId').value;
+            if (!state.userId) {
+                alert('Please enter your user ID');
+                return;
+            }
+
+            // Initialize Socket.IO connection with authentication
+            state.socket = io('http://localhost:8001', {
+                auth: {
+                    user_id: state.userId
+                },
+                transports: ['websocket'],
+                withCredentials: false,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                path: '/socket.io/'
+            });
+            
+            // Connection event handlers
+            state.socket.on('connect', () => {
+                console.log('Connected to server');
+                updateConnectionStatus('connected');
+                loadMessages();
+                if (state.currentChatType === 'group') {
+                    loadUserGroups();
+                }
+            });
+
+            state.socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                updateConnectionStatus('disconnected');
+                showNotification('Connection error: ' + error.message, 'error');
+            });
+
+            state.socket.on('disconnect', (reason) => {
+                console.log('Disconnected:', reason);
+                updateConnectionStatus('disconnected');
+                showNotification('Disconnected from server: ' + reason, 'error');
+            });
+
+            // Message event handlers
+            state.socket.on('message', (message) => {
+                console.log('Received message:', message);
+                displayMessage(message, message.from_user_id === state.userId);
+            });
+
+            state.socket.on('notification', (notification) => {
+                console.log('Received notification:', notification);
+                if (notification.type === 'unread_notification') {
+                    showNotification(notification.content);
+                    state.unreadCounts.direct = notification.unread_direct;
+                    state.unreadCounts.group = notification.unread_group;
+                    updateUnreadBadges();
+                } else if (notification.type === 'group_notification') {
+                    showNotification(notification.content);
+                    loadUserGroups();
+                }
+            });
+
+            state.socket.on('message_update', (update) => {
+                console.log('Received message update:', update);
+                if (update.type === 'read_receipt') {
+                    updateMessageStatus(update.message_id, 'read');
+                }
+            });
+        }
+
+        function markMessageAsRead(messageId) {
+            if (state.socket && state.socket.connected) {
+                state.socket.emit('mark_read', {
+                    message_id: messageId
+                });
+            }
+        }
+
+        async function sendMessage() {
+            if (!state.socket || !state.socket.connected) {
+                alert('Please connect first');
+                return;
+            }
+
+            const content = document.getElementById('messageInput').value;
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!content && !file) {
+                alert('Please enter a message or select a file');
+                return;
+            }
+
+            let to;
+            if (state.currentChatType === 'group') {
+                to = document.getElementById('groupSelect').value;
+                if (!to) {
+                    alert('Please select a group');
+                    return;
+                }
+            } else {
+                to = document.getElementById('recipientId').value;
+                if (!to) {
+                    alert('Please enter recipient ID');
+                    return;
+                }
+            }
+
+            try {
+                let mediaUrl = null;
+                let contentType = file ? null : 'text';
+                let mediaMetadata = null;
+
+                if (file) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const uploadResponse = await fetch('http://localhost:8001/upload/', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!uploadResponse.ok) {
+                        throw new Error('File upload failed');
+                    }
+
+                    const uploadResult = await uploadResponse.json();
+                    mediaUrl = uploadResult.url;
+                    contentType = uploadResult.content_type;
+                    mediaMetadata = {
+                        filename: uploadResult.filename,
+                        size: uploadResult.size
+                    };
+                }
+
+                const message = {
+                    type: state.currentChatType,
+                    to: to,
+                    content: content || `Sent a ${contentType} file`,
+                    content_type: contentType || 'text',
+                    media_url: mediaUrl,
+                    media_metadata: mediaMetadata
+                };
+
+                state.socket.emit('send_message', message);
+                document.getElementById('messageInput').value = '';
+                document.getElementById('fileInput').value = '';
+                document.getElementById('mediaPreview').innerHTML = '';
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showNotification('Error sending message: ' + error.message, 'error');
+            }
+        }
+
+        async function loadUserGroups() {
+            try {
+                const response = await fetch(`http://localhost:8001/groups/${state.userId}`);
+                state.userGroups = await response.json();
+                
+                const groupSelect = document.getElementById('groupSelect');
+                groupSelect.innerHTML = '<option value="">Select a group</option>';
+                
+                state.userGroups.forEach(group => {
+                    const option = document.createElement('option');
+                    option.value = group._id;
+                    option.textContent = `${group.name} (${group.member_ids.length} members)`;
+                    groupSelect.appendChild(option);
+                });
+
+                updateUnreadBadges();
+            } catch (error) {
+                console.error('Error loading groups:', error);
+            }
+        }
+
+        function updateUnreadBadges() {
+            const groupSelect = document.getElementById('groupSelect');
+            if (state.unreadCounts.group > 0) {
+                groupSelect.innerHTML += ` <span class="unread-badge">${state.unreadCounts.group}</span>`;
+            }
+        }
+
+        async function handleChatTypeChange() {
+            state.currentChatType = document.getElementById('chatType').value;
+            document.getElementById('directChatControls').style.display = 
+                state.currentChatType === 'direct' ? 'block' : 'none';
+            document.getElementById('groupChatControls').style.display = 
+                state.currentChatType === 'group' ? 'block' : 'none';
+            
+            if (state.currentChatType === 'group') {
+                await loadUserGroups();
+            }
+            clearMessages();
+        }
+
+        async function createGroup() {
+            const groupName = document.getElementById('newGroupName').value;
+            const membersStr = document.getElementById('newGroupMembers').value;
+            const memberIds = membersStr.split(',').map(id => id.trim());
+            
+            if (!groupName || memberIds.length === 0) {
+                alert('Please enter group name and at least one member');
+                return;
+            }
+
+            if (!memberIds.includes(state.userId)) {
+                memberIds.push(state.userId);
+            }
+
+            try {
+                const response = await fetch('http://localhost:8001/groups/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: groupName,
+                        member_ids: memberIds,
+                        created_by: state.userId
+                    }),
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Group created:', result);
+                    document.getElementById('newGroupName').value = '';
+                    document.getElementById('newGroupMembers').value = '';
+                    await loadUserGroups();
+                } else {
+                    const error = await response.json();
+                    alert('Error creating group: ' + error.detail);
+                }
+            } catch (error) {
+                console.error('Error creating group:', error);
+                alert('Error creating group. Check console for details.');
+            }
+        }
+
+        function loadGroupMessages() {
+            if (state.currentChatType === 'group') {
+                const groupId = document.getElementById('groupSelect').value;
+                if (groupId) {
+                    state.socket.emit('join_group', groupId);
+                }
+                loadMessages();
+            }
+        }
+
+        // File handling functions
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const preview = document.getElementById('mediaPreview');
+            preview.innerHTML = '';
+
+            if (file.type.startsWith('image/')) {
+                const img = document.createElement('img');
+                img.className = 'media-preview';
+                img.file = file;
+
+                const reader = new FileReader();
+                reader.onload = (e) => img.src = e.target.result;
+                reader.readAsDataURL(file);
+
+                preview.appendChild(img);
+            } else if (file.type.startsWith('video/')) {
+                const video = document.createElement('video');
+                video.className = 'media-preview';
+                video.controls = true;
+
+                const reader = new FileReader();
+                reader.onload = (e) => video.src = e.target.result;
+                reader.readAsDataURL(file);
+
+                preview.appendChild(video);
+            } else {
+                const fileInfo = document.createElement('div');
+                fileInfo.textContent = `Selected file: ${file.name} (${formatFileSize(file.size)})`;
+                preview.appendChild(fileInfo);
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Emoji picker functions
+        function toggleEmojiPicker() {
+            const emojiList = document.getElementById('emojiList');
+            emojiList.style.display = emojiList.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function addEmoji(emoji) {
+            const messageInput = document.getElementById('messageInput');
+            messageInput.value += emoji;
+            messageInput.focus();
+        }
+
+        async function setupRecorder() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const preview = document.getElementById('recordingPreview');
+                    preview.src = URL.createObjectURL(audioBlob);
+                    preview.style.display = 'block';
+                    
+                    // Auto-upload the voice note
+                    await uploadAndSendVoiceNote(audioBlob);
+                };
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                alert('Could not access microphone');
+            }
+        }
+
+        async function toggleRecording() {
+            if (!mediaRecorder) {
+                await setupRecorder();
+            }
+
+            const recordButton = document.getElementById('recordButton');
+            const statusSpan = document.getElementById('recordingStatus');
+            const preview = document.getElementById('recordingPreview');
+
+            if (!isRecording) {
+                // Start recording
+                audioChunks = [];
+                mediaRecorder.start();
+                isRecording = true;
+                recordButton.style.color = 'red';
+                statusSpan.textContent = 'Recording...';
+                preview.style.display = 'none';
+            } else {
+                // Stop recording
+                mediaRecorder.stop();
+                isRecording = false;
+                recordButton.style.color = 'black';
+                statusSpan.textContent = '';
+            }
+        }
+
+        async function uploadAndSendVoiceNote(audioBlob) {
+            try {
+                const formData = new FormData();
+                formData.append('file', audioBlob, 'voice_note.webm');
+
+                const uploadResponse = await fetch('http://localhost:8001/upload/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error('Voice note upload failed');
+                }
+
+                const uploadResult = await uploadResponse.json();
+
+                // Prepare message data
+                const messageData = {
+                    type: state.currentChatType,
+                    to: state.currentChatType === 'group' ? 
+                        document.getElementById('groupSelect').value :
+                        document.getElementById('recipientId').value,
+                    content: "Sent a voice note",
+                    content_type: "voice",
+                    media_url: uploadResult.url,
+                    media_metadata: {
+                        filename: uploadResult.filename,
+                        size: uploadResult.size,
+                        duration: await getAudioDuration(audioBlob)
+                    }
+                };
+
+                // Send the message
+                state.socket.emit('send_message', messageData);
+                
+                // Clear the preview
+                document.getElementById('recordingPreview').style.display = 'none';
+
+            } catch (error) {
+                console.error('Error sending voice note:', error);
+                showNotification('Error sending voice note: ' + error.message, 'error');
+            }
+        }
+
+        async function getAudioDuration(audioBlob) {
+            return new Promise((resolve) => {
+                const audio = new Audio(URL.createObjectURL(audioBlob));
+                audio.onloadedmetadata = () => resolve(Math.round(audio.duration));
+            });
+        }
+    </script>
+</body>
+</html> 
